@@ -14,6 +14,9 @@ unzip("data.zip")
 ucenici17 <- read_csv("ucenici17.csv")
 ucenici16 <- read_csv("ucenici16.csv")
 ucenici15 <- read_csv("ucenici15.csv")
+ucenici17$kombinovani_p <- (ucenici17$geografija_p+ucenici17$istorija_p+ucenici17$biologija_p+ucenici17$fizika_p+ucenici17$hemija_p)/5
+ucenici16$kombinovani_p <- (ucenici16$geografija_p+ucenici16$istorija_p+ucenici16$biologija_p+ucenici16$fizika_p+ucenici16$hemija_p)/5
+ucenici15$kombinovani_p <- (ucenici15$geografija_p+ucenici15$istorija_p+ucenici15$biologija_p+ucenici15$fizika_p+ucenici15$hemija_p)/5
 #minus označava drop -- efektivno, dropujemo kolone od likovno6 do bodovi_sa_prijemnog, 
 #jer su u pitanju proseci koji se mogu izračunati. Nije nužno (ali štedi memoriju)
 smerovi17 <- read_csv("smerovi17.csv") %>% select(-(likovno6:bodovi_sa_prijemnog)) 
@@ -95,10 +98,20 @@ server <- function(input, output, session) {
     ucenici17f <- reactive({
         # %>% is also a pipe, but it doesn't assign a value to anything, just returns it
         # so a %>% f(b) equals f(a,b)
-        ucenici17 %>% filter(if(input$base_filter=="") TRUE else evalText(input$base_filter, ucenici17))
-        # in case you haven't noticed, everything is an expression, so we can use if-else
-        # like we'd use a ternary operator in C family of languages
+        tryCatch({
+            # if everything's fine, return this
+            ucenici17 %>% filter(if(input$base_filter=="") TRUE else evalText(input$base_filter, ucenici17))
+        }, warning = function(w) {
+            # if shit seems to be happening, return empty tibble
+            tibble()
+        }, error = function(e) {
+            # if shit happens, return empty tibble
+            tibble()
+        })
+        # in case you haven't noticed, R does stuff differently
+        # not only tryCatch is a function, but also if-else is an expression (like ?: is C-like langs)
     })
+    ucenici17f %<>% debounce(750) # delay refresh time
     
     # 
     # ---------------------------------------
@@ -108,6 +121,8 @@ server <- function(input, output, session) {
     
     output$basic_plot <- renderPlot({
         data <- ucenici17f()
+        if(count(data) == 0) return(ggplot(data)) # if data is empty (e.g. invalid filter), return early
+        
         pos <- if(input$p1_jitter) "jitter" else "identity"
         x <- evalText((input$var_x), data)
         y <- evalText((input$var_y), data)
@@ -124,6 +139,8 @@ server <- function(input, output, session) {
     # this, but in 2d: https://mathisonian.github.io/kde/
     output$kde2d <- renderPlot({
         data <- ucenici17f()
+        if(count(data) == 0) return(ggplot(data))
+        
         x <- evalText((input$var_x), data)
         y <- evalText((input$var_y), data)
         ggplot(data, aes(x, y)) + xlab(input$var_x) + ylab(input$var_y) + 
@@ -136,17 +153,29 @@ server <- function(input, output, session) {
     # ---------------------------------------
     #
     
+    svef <- reactive({
+        tryCatch(
+            svef <- sve %>%
+                filter(if(is.null(input$join1_filter_val) || input$join1_filter_var == "") FALSE 
+                       else (evalText(input$join1_filter_var, .) %in% input$join1_filter_val)) %>%
+                filter(if(input$base_filter=="") TRUE else evalText(input$base_filter, .)),
+            warning = function(w) tibble(), 
+            error = function(e) tibble()
+        )
+    })
+    svef %<>% debounce(750)
+    
     output$join1 <- renderPlot({
+        data <- svef()
+        if(count(data) == 0) return(ggplot(data))
+        
         filt_var <- input$join1_filter_var
         filt_in <- input$join1_filter_val
         col <- input$join1_col
-        svef <- sve %>%
-                  filter(if(input$base_filter=="") TRUE else evalText(input$base_filter, .)) %>%
-                  filter(if(is.null(filt_in) || filt_var == "") FALSE else (evalText(filt_var, .) %in% filt_in))
-        x <- evalText((input$var_x), svef)
-        y <- evalText((input$var_y), svef)
+        x <- evalText((input$var_x), data)
+        y <- evalText((input$var_y), data)
         pos <- if(input$join1_jitter) "jitter" else "identity"
-        ggplot(svef, aes(x, y, color=evalText(col, svef))) + geom_point(alpha=input$join1_alpha, position=pos) + 
+        ggplot(data, aes(x, y, color=evalText(col, data))) + geom_point(alpha=input$join1_alpha, position=pos) + 
             facet_grid(rows = reformulate(".", filt_var)) + 
             guides(colour = guide_legend(override.aes = list(alpha = 1))) + scale_color_discrete(name=col) +
             xlab(input$var_x) + ylab(input$var_y)
@@ -169,6 +198,8 @@ server <- function(input, output, session) {
     
     output$model_regline <- renderPlot({
         data <- ucenici17f()
+        if(count(data) == 0) return(ggplot(data))
+        
         x <- evalText((input$var_x), data)
         y <- evalText((input$var_y), data)
         pos <- if(input$model_rl_jitter) "jitter" else "identity"
@@ -181,13 +212,17 @@ server <- function(input, output, session) {
     
     output$model_freqpoly <- renderPlot({
         data <- ucenici17f() %>%
-            select(input$var_x, input$var_y) %>% add_residuals(model())
+            select(input$var_x, input$var_y) %>% add_residuals
+        if(count(data) == 0) return(ggplot(data))
+        
         ggplot(data, aes(resid)) + geom_freqpoly(binwidth=input$model_freq_binwidth)
     })
     
     output$model_resid <- renderPlot({
         data <- ucenici17f()  %>%
             select(input$var_x, input$var_y) %>% add_residuals(model())
+        if(count(data) == 0) return(ggplot(data))
+        
         x <- evalText((input$var_x), data)
         pos <- if(input$model_res_jitter) "jitter" else "identity"
         ggplot(data, aes(x, resid)) + geom_ref_line(h=0) + 
