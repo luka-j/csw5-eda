@@ -51,7 +51,6 @@ rm(ucenici16, ucenici15, osnovne15, osnovne16, osnovne17, smerovi15, smerovi16, 
 #
 # Standardizing values & putting everything into one huge tibble
 #
-
 # Behold. a function! (Braces are optional for one-line functions, it's just a matter of style)
 standardize <- function(var, m=0, stdev=1) {
     m+stdev*(var-mean(var))/(sd(var)) # no need to use return -- last expression is a return value
@@ -81,7 +80,7 @@ sve %<>% mutate_at(vars(godina, sm.podrucje, sm.mesto, sm.okrug, sm.ime, os.mest
 rm(sve17, sve16, sve15)
 sve_varlist <- names(sve)
 sve_factors <- names(sve %>% select_if(is.factor))
-# helper -- evaluates string that's passed to it in a given context
+# helper function -- evaluates string that's passed to it in a given context
 evalText <- function(text, context) {
     eval(parse(text=text), context)
 }
@@ -94,7 +93,6 @@ evalText <- function(text, context) {
 #
 
 server <- function(input, output, session) {
-    # this is where the base filter is evaluated
     ucenici17f <- reactive({
         # %>% is also a pipe, but it doesn't assign a value to anything, just returns it
         # so a %>% f(b) equals f(a,b)
@@ -212,7 +210,7 @@ server <- function(input, output, session) {
     
     output$model_freqpoly <- renderPlot({
         data <- ucenici17f() %>%
-            select(input$var_x, input$var_y) %>% add_residuals
+            select(input$var_x, input$var_y) %>% add_residuals(model())
         if(count(data) == 0) return(ggplot(data))
         
         ggplot(data, aes(resid)) + geom_freqpoly(binwidth=input$model_freq_binwidth)
@@ -260,6 +258,14 @@ server <- function(input, output, session) {
         join_choices <- levels(evalText(input$join1_filter_var, sve))
         updateSelectInput(session, "join1_filter_val", choices = join_choices, selected = join_choices[1])
     })
+    
+    # this triggers every time btn_swap is changed
+    observeEvent(input$btn_swap, {
+        selx <- isolate(input$var_x) # if we isolate input variable, this block won't react on it
+        sely <- isolate(input$var_y)
+        updateSelectInput(session, "var_x", choices = sve_varlist, selected = sely)
+        updateSelectInput(session, "var_y", choices = sve_varlist, selected = selx)
+    })
 }
 
 
@@ -277,8 +283,9 @@ ui <- fluidPage(
     titlePanel("Nedelja informatike — Eksplorativna analiza podataka"),
     
     fluidRow(
-        column(6, selectInput("var_x", "X", choices = uc_varlist, selected = "uc.matematika_p")),
-        column(6, selectInput("var_y", "Y", choices = uc_varlist, selected = "uc.matematika"))
+        column(5, selectInput("var_x", "X", choices = uc_varlist, selected = "uc.matematika_p")),
+        column(2, actionButton("btn_swap", "Swap", style="margin-top: 26px")),
+        column(5, selectInput("var_y", "Y", choices = uc_varlist, selected = "uc.matematika"))
     ),
     
     fluidRow(
