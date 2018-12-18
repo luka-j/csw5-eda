@@ -133,6 +133,17 @@ server <- function(input, output, session) {
                 scale_colour_gradient(name=input$p1_col_var, low="red", high="blue") +
                 xlab(input$var_x) + ylab(input$var_y)
     })
+    output$basic_plot.ui <- renderUI(plotOutput("basic_plot", height=input$plot_height))
+    # only reason renderUI is needed is for dynamic height of plots
+    
+    output$kde <- renderPlot({
+        data <- ucenici17f()
+        if(count(data) == 0) return(ggplot(data))
+        
+        x <- evalText((input$var_x), data)
+        ggplot(data, aes(x)) + geom_density(kernel=input$kde_kernel, bw=input$kde_bw)
+    })
+    output$kde.ui <- renderUI(plotOutput("kde", height=input$plot_height))
     
     # this, but in 2d: https://mathisonian.github.io/kde/
     output$kde2d <- renderPlot({
@@ -144,6 +155,7 @@ server <- function(input, output, session) {
         ggplot(data, aes(x, y)) + xlab(input$var_x) + ylab(input$var_y) + 
             stat_density_2d(geom="point", aes(size = stat(density)), n = input$kde2d_n, contour = FALSE)
     })
+    output$kde2d.ui <- renderUI(plotOutput("kde2d", height=input$plot_height))
     
     # 
     # ---------------------------------------
@@ -153,31 +165,32 @@ server <- function(input, output, session) {
     
     svef <- reactive({
         tryCatch(
-            svef <- sve %>%
-                filter(if(is.null(input$join1_filter_val) || input$join1_filter_var == "") FALSE 
-                       else (evalText(input$join1_filter_var, .) %in% input$join1_filter_val)) %>%
-                filter(if(input$base_filter=="") TRUE else evalText(input$base_filter, .)),
+            sve %>%
+                filter(if(is.null(input$facet_filter_val) || input$facet_filter_var == "") FALSE 
+                       else ((evalText(input$facet_filter_var, .) %in% input$facet_filter_val) &
+                             (if(input$base_filter=="") TRUE else evalText(input$base_filter, .)))),
             warning = function(w) tibble(), 
             error = function(e) tibble()
         )
     })
     svef %<>% debounce(750)
     
-    output$join1 <- renderPlot({
+    output$facet <- renderPlot({
         data <- svef()
         if(count(data) == 0) return(ggplot(data))
         
-        filt_var <- input$join1_filter_var
-        filt_in <- input$join1_filter_val
-        col <- input$join1_col
+        filt_var <- input$facet_filter_var
+        filt_in <- input$facet_filter_val
+        col <- input$facet_col
         x <- evalText((input$var_x), data)
         y <- evalText((input$var_y), data)
-        pos <- if(input$join1_jitter) "jitter" else "identity"
-        ggplot(data, aes(x, y, color=evalText(col, data))) + geom_point(alpha=input$join1_alpha, position=pos) + 
+        pos <- if(input$facet_jitter) "jitter" else "identity"
+        ggplot(data, aes(x, y, color=evalText(col, data))) + geom_point(alpha=input$facet_alpha, position=pos) + 
             facet_grid(rows = reformulate(".", filt_var)) + 
             guides(colour = guide_legend(override.aes = list(alpha = 1))) + scale_color_discrete(name=col) +
             xlab(input$var_x) + ylab(input$var_y)
     })
+    output$facet.ui <- renderUI(plotOutput("facet", height=input$plot_height))
     
     # 
     # ---------------------------------------
@@ -207,6 +220,7 @@ server <- function(input, output, session) {
             geom_line(aes(grid[[1]], grid[[2]]), data=grid, color="red", size=1.5) +
             xlab(input$var_x) + ylab(input$var_y)
     })
+    output$model_regline.ui <- renderUI(plotOutput("model_regline", height=input$plot_height))
     
     output$model_freqpoly <- renderPlot({
         data <- ucenici17f() %>%
@@ -215,6 +229,7 @@ server <- function(input, output, session) {
         
         ggplot(data, aes(resid)) + geom_freqpoly(binwidth=input$model_freq_binwidth)
     })
+    output$model_freqpoly.ui <- renderUI(plotOutput("model_freqpoly", height=input$plot_height))
     
     output$model_resid <- renderPlot({
         data <- ucenici17f()  %>%
@@ -226,6 +241,7 @@ server <- function(input, output, session) {
         ggplot(data, aes(x, resid)) + geom_ref_line(h=0) + 
             geom_point(position=pos, alpha=input$model_res_alpha) + xlab(input$var_x)
     })
+    output$model_resid.ui <- renderUI(plotOutput("model_resid", height=input$plot_height))
     
     
     # 
@@ -255,8 +271,8 @@ server <- function(input, output, session) {
     })
     
     observe({
-        join_choices <- levels(evalText(input$join1_filter_var, sve))
-        updateSelectInput(session, "join1_filter_val", choices = join_choices, selected = join_choices[1])
+        join_choices <- levels(evalText(input$facet_filter_var, sve))
+        updateSelectInput(session, "facet_filter_val", choices = join_choices, selected = join_choices[1])
     })
     
     # this triggers every time btn_swap is changed
@@ -299,8 +315,8 @@ ui <- fluidPage(
                  h3("Scatter plot"),
                  
                  fluidRow(
-                     column(8, plotOutput("basic_plot")),
-                     column(4, wellPanel(
+                     column(9, uiOutput("basic_plot.ui")),
+                     column(3, wellPanel(
                                 sliderInput("p1_alpha", "Transparentnost (alpha):",
                                             min = 0, max = 1, value = 1),
                                 checkboxInput("p1_jitter", "Jitter"),
@@ -312,8 +328,19 @@ ui <- fluidPage(
                  h3("Kernel Density Estimate"),
                  
                  fluidRow(
-                     column(8, plotOutput("kde2d")),
-                     column(4, wellPanel(
+                     column(9, uiOutput("kde.ui")),
+                     column(3, wellPanel(
+                         selectInput("kde_kernel", "Kernel",
+                                     choices = c("gaussian", "epanechnikov", "rectangular",  
+                                        "triangular", "biweight",  "cosine", "optcosine")),
+                         sliderInput("kde_bw", "Bandwidth",
+                                     min = 0.01, max = 2, value = 0.05)
+                     ))
+                 ),
+                 
+                 fluidRow(
+                     column(9, uiOutput("kde2d.ui")),
+                     column(3, wellPanel(
                                 sliderInput("kde2d_n", "KDE n",
                                             min = 0, max = 20, value = 10)
                             ))
@@ -322,14 +349,14 @@ ui <- fluidPage(
         
         tabPanel("Faceting", value="joins",
                fluidRow(
-                   column(8, plotOutput("join1", height = 600)),
-                   column(4, wellPanel(
-                       sliderInput("join1_alpha", "Transparentnost (alpha):",
+                   column(9, uiOutput("facet.ui", height = 600)),
+                   column(3, wellPanel(
+                       sliderInput("facet_alpha", "Transparentnost (alpha):",
                                    min = 0, max = 1, value = 0.07),
-                       checkboxInput("join1_jitter", "Jitter", value = TRUE),
-                       selectInput("join1_filter_var", "Prikaži samo ako je", choices = sve_factors, selected = "sm.podrucje"),
-                       selectInput("join1_filter_val", "jedan od", choices = levels(sve$sm.podrucje), selected = "gimnazija", multiple = TRUE),
-                       selectInput("join1_col", "Boja", choices = sve_factors, selected = "sm.podrucje")
+                       checkboxInput("facet_jitter", "Jitter", value = TRUE),
+                       selectInput("facet_filter_var", "Prikaži samo ako je", choices = sve_factors, selected = "sm.podrucje"),
+                       selectInput("facet_filter_val", "jedan od", choices = levels(sve$sm.podrucje), selected = "gimnazija", multiple = TRUE),
+                       selectInput("facet_col", "Boja", choices = sve_factors, selected = "sm.podrucje")
                    ))
                )  
         ),
@@ -339,8 +366,8 @@ ui <- fluidPage(
                  h3("Regression line"),
                  
                  fluidRow(
-                     column(8, plotOutput("model_regline")),
-                     column(4,  wellPanel(
+                     column(9, uiOutput("model_regline.ui")),
+                     column(3,  wellPanel(
                          sliderInput("model_rl_alpha", "Transparentnost (alpha):",
                                      min = 0, max = 1, value = 0.04),
                          checkboxInput("model_rl_jitter", "Jitter", value = TRUE)
@@ -350,8 +377,8 @@ ui <- fluidPage(
                  h3("Residual count"),
                  
                  fluidRow(
-                     column(8, plotOutput("model_freqpoly")),
-                     column(4, wellPanel(
+                     column(9, uiOutput("model_freqpoly.ui")),
+                     column(3, wellPanel(
                          sliderInput("model_freq_binwidth", "Binwidth",
                                      min = 0.01, max = 3, value = 0.33)
                      ))
@@ -360,15 +387,17 @@ ui <- fluidPage(
                  h3("Residual distribution"),
                  
                  fluidRow(
-                     column(8, plotOutput("model_resid")),
-                     column(4, wellPanel(
+                     column(9, uiOutput("model_resid.ui")),
+                     column(3, wellPanel(
                          sliderInput("model_res_alpha", "Transparentnost (alpha):",
                                      min = 0, max = 1, value = 0.05),
                          checkboxInput("model_res_jitter", "Jitter", value = TRUE)
                      ))
                 )
         )
-    )
+    ),
+    
+    sliderInput("plot_height", "Global plot height", 100, 1600, 400)
 )
 
 #
