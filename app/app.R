@@ -259,8 +259,8 @@ server <- function(input, output, session) {
     })
     
     observe({
-        selx <- input$var_x
-        sely <- input$var_y
+        selx <- isolate(input$var_x)
+        sely <- isolate(input$var_y)
         if(input$tabs == "basic" || input$tabs == "models") {
             updateSelectInput(session, "var_x", choices = uc_varlist, selected = selx)
             updateSelectInput(session, "var_y", choices = uc_varlist, selected = sely)
