@@ -2,6 +2,8 @@
 
 [Shiny](https://github.com/rstudio/shiny) app containing visualisations for [upis data](https://github.com/luka-j/UpisStats). (Also [CSWeek](http://csnedelja.mg.edu.rs) materials.)
 
+Live @ <luka-j.shinyapps.io/csw5>
+
 ## Installation
 1. Clone this repo (`git clone https://github.com/luka-j/csw5-eda.git`)
 1. Download latest data.zip from [releases](https://github.com/luka-j/csw5-eda/releases) and put it in 'app' directory 
