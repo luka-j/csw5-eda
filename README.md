@@ -4,6 +4,9 @@
 
 Live @ <https://lukaj.shinyapps.io/csw5/>
 
+## Upgraded version
+I've upgraded this as a part of my homework for Statistics course in college: [source available here](github.com/luka-j/stat-proj/). Unfortunately, it's harder to set up as it requires a PostgreSQL database and it's not live anywhere at the moment.
+
 ## Installation
 1. Clone this repo (`git clone https://github.com/luka-j/csw5-eda.git`)
 1. Download latest data.zip from [releases](https://github.com/luka-j/csw5-eda/releases) and put it in 'app' directory 
